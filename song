@@ -1,0 +1,90 @@
+#!/usr/bin/env ruby
+require 'nokogiri'
+require 'open-uri'
+require 'sanitize'
+require 'fuzzystringmatch'
+require 'youtube-dl.rb'
+#take one string of a song and obtain candidates
+#compare candidates with original string and download to mp3, add album artwork and meta info
+class Song
+
+  attr_accessor :search_string, :query, :candidates, :fuzzy
+
+
+  def initialize(search_string)
+    @search_string = search_string
+    @query = @search_string.downcase.gsub(" ","+")
+    @candidates = []
+    @fuzzy = FuzzyStringMatch::JaroWinkler.create(:native)
+  end
+
+  def build_candidates
+    doc = Nokogiri::HTML(open("http://www.google.com/search?q=#{query}&num=20"))
+    doc.xpath('//div/cite').each do |node|
+      @candidates << Sanitize.clean(node)
+    end
+
+    @candidates = @candidates.collect{|c| c if c.include?("http")  && (c.include?("youtube.com") || c.include?("soundcloud.com") || c.include?("bandcamp.com")) }.compact
+
+    #replace each with url, score, and title
+    set = []
+
+    @candidates.each do |c|
+      if c.include?("youtube")
+        set << get_youtube(c)
+      elsif c.include?("soundcloud")
+        set << get_soundcloud(c)
+      elsif c.include?("bandcamp")
+        set << get_bandcamp(c)
+      end
+    end
+
+    @candidates = set
+    @candidates.sort!{|x,y| y[:score] <=> x[:score]}
+    puts @candidates.inspect
+  end
+
+
+  def get_youtube(url)
+    doc = Nokogiri::HTML(open(url))
+    title_elm = doc.xpath('//title').first
+    title = nil
+    title = title_elm.content.gsub(" - YouTube","") if title_elm
+    return {url: url, title: title, score: @fuzzy.getDistance(title,@search_string)}
+  end
+
+  def get_soundcloud(url)
+    doc = Nokogiri::HTML(open(url))
+    title_elm = doc.xpath('//title').first
+    title = nil
+    title = title_elm.content.gsub(" | Free Listening on SoundCloud","") if title_elm
+    return {url: url, title: title, score: @fuzzy.getDistance(title,@search_string)}
+  end
+
+  def get_bandcamp(url)
+    doc = Nokogiri::HTML(open(url))
+    title_elm = doc.xpath('//title').first
+    title = nil
+    title = title_elm.content.gsub("| ","") if title_elm
+    return {url: url, title: title, score: @fuzzy.getDistance(title,@search_string)}
+  end
+
+  def download
+    if @candidates.count > 0
+      puts "Downloading..."
+      url = @candidates.first[:url]
+      %x(youtube-dl --output "#{query.gsub("+","-")}.%(ext)s" -x --audio-format mp3 #{url})
+      puts "Done"
+    else
+      puts "Could not find"
+    end
+  end
+
+  #add mp3info gem also
+
+end
+
+
+a = Song.new("#{ARGV.join(' ')}")
+a.build_candidates
+a.download
