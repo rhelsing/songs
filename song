@@ -3,7 +3,7 @@ require 'nokogiri'
 require 'open-uri'
 require 'sanitize'
 require 'fuzzystringmatch'
-require 'youtube-dl.rb'
+require "mp3info"
 #take one string of a song and obtain candidates
 #compare candidates with original string and download to mp3, add album artwork and meta info
 class Song
@@ -75,16 +75,37 @@ class Song
       url = @candidates.first[:url]
       %x(youtube-dl --output "#{query.gsub("+","-")}.%(ext)s" -x --audio-format mp3 #{url})
       puts "Done"
+      return true
     else
       puts "Could not find"
+      return false
     end
   end
 
   #add mp3info gem also
+  def metadata
+    doc = Nokogiri::HTML(open("http://www.last.fm/search?q=#{query}&type=track"))
+    url = doc.css("span.chartlist-ellipsis-wrap").first.css("a.link-block-target").first.attr('href')
+    ch = url.gsub('/music/', "")
+    artist, title = ch.split("/_/")
+    artist = artist.gsub('+', " ")
+    title = title.gsub('+', " ")
+    doc = Nokogiri::HTML(open("http://www.last.fm#{url}"))
+    album = doc.css("h3 a").first
+    begin
+      Mp3Info.open("#{query.gsub("+","-")}.mp3") do |mp3|
+        mp3.tag.title = "#{URI.unescape(title)}".strip
+        mp3.tag.artist = "#{URI.unescape(artist)}".strip
+        mp3.tag.album = "#{URI.unescape(album.content)}".strip
+      end
+    rescue
+      puts "Fail"
+    end
+  end
 
 end
 
 
 a = Song.new("#{ARGV.join(' ')}")
 a.build_candidates
-a.download
+a.metadata if a.download
