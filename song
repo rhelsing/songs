@@ -18,8 +18,9 @@ class Song
     @fuzzy = FuzzyStringMatch::JaroWinkler.create(:native)
   end
 
+  #TODO: get more canidates from youtube, soundcloud, bandcamp
   def build_candidates
-    doc = Nokogiri::HTML(open("http://www.google.com/search?q=#{query}&num=20"))
+    doc = Nokogiri::HTML(open("http://www.google.com/search?q=#{query}&num=30"))
     doc.xpath('//div/cite').each do |node|
       @candidates << Sanitize.clean(node)
     end
@@ -41,32 +42,44 @@ class Song
 
     @candidates = set
     @candidates.sort!{|x,y| y[:score] <=> x[:score]}
-    puts @candidates.inspect
+    puts @candidates.count
   end
 
 
   def get_youtube(url)
-    doc = Nokogiri::HTML(open(url))
-    title_elm = doc.xpath('//title').first
-    title = nil
-    title = title_elm.content.gsub(" - YouTube","") if title_elm
-    return {url: url, title: title, score: @fuzzy.getDistance(title,@search_string)}
+    begin
+      doc = Nokogiri::HTML(open(url))
+      title_elm = doc.xpath('//title').first
+      title = nil
+      title = title_elm.content.gsub(" - YouTube","") if title_elm
+      return {url: url, title: title, score: @fuzzy.getDistance(title,@search_string)}
+    rescue
+      return {url: url, title: title, score: 0.0}
+    end
   end
 
   def get_soundcloud(url)
-    doc = Nokogiri::HTML(open(url))
-    title_elm = doc.xpath('//title').first
-    title = nil
-    title = title_elm.content.gsub(" | Free Listening on SoundCloud","") if title_elm
-    return {url: url, title: title, score: @fuzzy.getDistance(title,@search_string)}
+    begin
+      doc = Nokogiri::HTML(open(url))
+      title_elm = doc.xpath('//title').first
+      title = nil
+      title = title_elm.content.gsub(" | Free Listening on SoundCloud","") if title_elm
+      return {url: url, title: title, score: @fuzzy.getDistance(title,@search_string)}
+    rescue
+      return {url: url, title: title, score: 0.0}
+    end
   end
 
   def get_bandcamp(url)
-    doc = Nokogiri::HTML(open(url))
-    title_elm = doc.xpath('//title').first
-    title = nil
-    title = title_elm.content.gsub("| ","") if title_elm
-    return {url: url, title: title, score: @fuzzy.getDistance(title,@search_string)}
+    begin
+      doc = Nokogiri::HTML(open(url))
+      title_elm = doc.xpath('//title').first
+      title = nil
+      title = title_elm.content.gsub("| ","") if title_elm
+      return {url: url, title: title, score: @fuzzy.getDistance(title,@search_string)}
+    rescue
+      return {url: url, title: title, score: 0.0}
+    end
   end
 
   def download
@@ -84,6 +97,7 @@ class Song
 
   #add mp3info gem also
   def metadata
+    puts "Adding Metadata..."
     doc = Nokogiri::HTML(open("http://www.last.fm/search?q=#{query}&type=track"))
     url = doc.css("span.chartlist-ellipsis-wrap").first.css("a.link-block-target").first.attr('href')
     ch = url.gsub('/music/', "")
@@ -98,6 +112,7 @@ class Song
         mp3.tag.artist = "#{URI.unescape(artist)}".strip
         mp3.tag.album = "#{URI.unescape(album.content)}".strip
       end
+      puts "Done"
     rescue
       puts "Fail"
     end

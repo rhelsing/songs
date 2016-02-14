@@ -1,0 +1,9 @@
+#!/usr/bin/env ruby
+require "parallel"
+array = IO.readlines("#{ARGV[0]}")
+array.collect!{|l| l.gsub("\n","") }
+Parallel.map(array, :in_processes=>4) do |song|
+  out = %x(./song #{song})
+  puts out
+end
+puts "Done"
